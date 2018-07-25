@@ -233,9 +233,9 @@ def callbackCostmap(og):
     global cmap
     cmap = og
     mgr.setMap(og)
-    matrix = mgr.grid2matrix(og)
-    matrix = mgr.downscale(4, matrix)
-    mgr.matrix = matrix
+    #matrix = mgr.grid2matrix(og)
+    #matrix = mgr.downscale(4, matrix)
+    #mgr.matrix = matrix
 def callbackUpdate(costmap_u):
     if processing:
         print("not updating map, it is currently in use by the planner")
@@ -286,7 +286,9 @@ def callbackTarget(target):
     print("received new target")
     global processing
     processing = True
-    matrix = mgr.matrix
+    matrix = mgr.grid2matrix(mgr.map)
+    matrix = mgr.downscale(4, matrix)
+    mgr.matrix = matrix
     overlay = mgr.scaleOverlayMap(target.allowedEnv)
     #plt.matshow(overlay)
     #plt.show()
@@ -298,14 +300,15 @@ def callbackTarget(target):
     print("computed map potentials")
     grid = mgr.applyPotential(matrix, potentials)
     print("applied potentials")
-    mgr.plotPotential(grid)
+    #mgr.plotPotential(grid)
     grid = mgr.matrix2grid(grid)
     scaling = mgr.resolution
     tgt = [(target.target.position.x + 12.825)/scaling, (target.target.position.y + 12.825) / scaling]
-    path = mgr.calcPath((robot_pose[0]+12.825) / scaling,(robot_pose[1] + 12.825)/scaling, target[0], target[1], grid)
+    path = mgr.calcPath(int(round((robot_pose[0]+12.825) / scaling)),int(round((robot_pose[1] + 12.825)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
     trajectory = path2trajectory(path)
-    #trajectoryPub.publish(trajectory)
-    mgr.plotPath(path)
+    #mgr.plotPath(path)
+    trajectoryPub.publish(trajectory)
+    print(trajectory)
     processing = False
 def callbackPosition(pose):
     global robot_pose
@@ -318,9 +321,9 @@ processing = False
 global mgr
 mgr = MapMgr()
 rospy.init_node('local_pathfinder')
+rospy.Subscriber("/slam_out_pose", PoseStamped, callbackPosition)
+rospy.Subscriber("/direct_move/target", Target, callbackTarget, tcp_nodelay=True, queue_size=5)
 trajectoryPub = rospy.Publisher("/direct_move/trajectory", PoseArray, queue_size=1)
 rospy.Subscriber("/move_base/global_costmap/costmap", OccupancyGrid, callbackCostmap)
 rospy.Subscriber("/move_base/global_costmap/costmap_updates", OccupancyGridUpdate, callbackUpdate, queue_size=1)
-rospy.Subscriber("/direct_move/target", Target, callbackTarget)
-rospy.Subscriber("/slam_out_pose", PoseStamped, callbackPosition)
 rospy.spin()
