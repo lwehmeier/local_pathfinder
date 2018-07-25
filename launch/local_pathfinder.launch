@@ -1,0 +1,8 @@
+<!-- Starts up everything needed to run the example listener/talker Python nodes. -->
+
+<launch>
+  <node pkg="local_pathfinder" type="local_pathfinder.py" name="local_pathfinder">
+    <param name="rate" value="2"/>
+  </node>
+
+</launch>
