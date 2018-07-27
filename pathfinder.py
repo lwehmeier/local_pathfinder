@@ -8,7 +8,10 @@ from geometry_msgs.msg import Vector3, Quaternion, Pose, PoseStamped, PoseArray
 import struct
 from pathfinding.core.diagonal_movement import DiagonalMovement
 from pathfinding.core.grid import Grid
+from pathfinding.core.heuristic import manhatten, euclidean, octile, null
 from pathfinding.finder.a_star import AStarFinder
+from pathfinding.finder.bi_a_star import BiAStarFinder
+from pathfinding.finder.ida_star import IDAStarFinder
 from pathfinding.finder.dijkstra import DijkstraFinder
 import numpy as np
 from nav_msgs.msg import OccupancyGrid
@@ -16,7 +19,7 @@ from map_msgs.msg import OccupancyGridUpdate
 import matplotlib.pyplot as plt
 from local_pathfinder.msg import Target
 plt.style.use('classic')
-BASE_POTENTIAL = 10.0
+BASE_POTENTIAL = 50.0
 ALLOW_UNKNOWN = True
 
 class MapMgr:
@@ -60,18 +63,9 @@ class MapMgr:
                 matrix[x].append(mval)
         return np.array(matrix)
 
-    def getLocalPotential(self, matrix, x, y):
-        width = len(matrix)
-        height = len(matrix[0])
-        potential = 0.0
-        for i in range(max(x-2, 0), min(width, x+3)):
-            for j in range(max(y-2, 0), min(y+3, height)):
-                if matrix[i][j]==0.0:
-                    potential=0.0
-        return potential
     def potentialPropagator(self, x0,y0, x1, y1):
         d = np.linalg.norm(np.array([x0-x1,y0-y1]))
-        return np.exp(1/(d*d*d*d))-1
+        return np.exp(1/(d*d*d*sqrt(d)))-1
     def propagatePotential(self, matrix, x, y):
         width = len(matrix)
         height = len(matrix[0])
@@ -80,8 +74,16 @@ class MapMgr:
         y_min = max(y-8, 0)
         y_max =  min(y+9,height)
         potential = np.zeros((x_max-x_min, y_max-y_min))
-        for i in range(x_min, x_max):
-            for j in range(y_min, y_max):
+        if False and np.product(matrix[x_min:x, y_min:y_max]) == 0.0:
+            x_min_prop = x #there's another block in that direction, no need to compute potentials
+        else:
+            x_min_prop = x_min
+        if False and np.product(matrix[x_min:x_max, y_min:y])==0.0: # block in range in y direction
+            y_min_prop = y
+        else:
+            y_min_prop = y_min
+        for i in range(x_min_prop, x_max):
+            for j in range(y_min_prop, y_max):
                 if not (i == x and j == y):
                     potential[i-x_min,j-y_min]=BASE_POTENTIAL*self.potentialPropagator(x,y,i,j)
         return potential
@@ -111,22 +113,12 @@ class MapMgr:
                     potential[x,y]=0.0
         return potential
 
-    def computePotential_old(self, matrix):
-        potential = []
-        width = len(matrix)
-        height=len(matrix[0])
-        for x in range(0, width):
-            potential.append([])
-            for y in range(0, height):
-                potential[x].append(self.getLocalPotential(matrix, x,y))
-        return np.array(potential)
-
     def plotPotential(self, matrix):
         m = np.zeros((self.width, self.height))
         for x in range(0, self.width):
             for y in range(0, self.height):
                 m[x,y] = matrix[self.width -1 - x,y]
-        plt.matshow(m, cmap='RdYlGn_r');
+        plt.matshow(matrix, cmap='RdYlGn_r');
         plt.colorbar()
         #plt.show()
 
@@ -164,17 +156,21 @@ class MapMgr:
     def calcPath(self, startx, starty, targetx, targety, grid):
         start = grid.node(startx, starty)
         end = grid.node(targetx, targety)
-        finder = AStarFinder(diagonal_movement=DiagonalMovement.only_when_no_obstacle)
+        finder = DijkstraFinder(diagonal_movement=DiagonalMovement.only_when_no_obstacle)#, heuristic=null)
         path, runs = finder.find_path(start, end, grid)
         print('operations:', runs, 'path length:', len(path))
+        #fix path offset
+        np = []
+        for tile in path:
+            np.append([tile[0], tile[1]])
         #print(grid.grid_str(path=path, start=start, end=end)
-        return path
+        return np
     def plotPath(self, path):
         x = []
         y = []
         for node in path:
             x.append(node[0])# flip axis for display
-            y.append(self.height -1 - node[1])
+            y.append(node[1])
         plt.plot(x,y, 'b')
         plt.show()
     def scaleOverlayMap(self, og):
@@ -257,7 +253,7 @@ def path2trajectory(path):
     scaling = mgr.resolution
     path = path[0:] #mk deep copy
     for i in range(0, len(path)):
-        path[i] = [path[i][0]-12.825/scaling, path[i][1]-12.825/scaling]
+        path[i] = [path[i][0]-12.8/scaling, path[i][1]-12.8/scaling]
     start = Pose()
     start.orientation = Quaternion(0,0,0,1.0)
     start.position = Vector3(path[0][0]*scaling, path[0][1]*scaling, 0)
@@ -300,13 +296,13 @@ def callbackTarget(target):
     print("computed map potentials")
     grid = mgr.applyPotential(matrix, potentials)
     print("applied potentials")
-    #mgr.plotPotential(grid)
+    mgr.plotPotential(grid)
     grid = mgr.matrix2grid(grid)
     scaling = mgr.resolution
-    tgt = [(target.target.position.x + 12.825)/scaling, (target.target.position.y + 12.825) / scaling]
-    path = mgr.calcPath(int(round((robot_pose[0]+12.825) / scaling)),int(round((robot_pose[1] + 12.825)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
+    tgt = [(target.target.position.x + 12.8)/scaling, (target.target.position.y + 12.8) / scaling]
+    path = mgr.calcPath(int(round((robot_pose[0]+12.8) / scaling)),int(round((robot_pose[1] + 12.8)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
     trajectory = path2trajectory(path)
-    #mgr.plotPath(path)
+    mgr.plotPath(path)
     trajectoryPub.publish(trajectory)
     print(trajectory)
     processing = False
