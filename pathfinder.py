@@ -296,13 +296,13 @@ def callbackTarget(target):
     print("computed map potentials")
     grid = mgr.applyPotential(matrix, potentials)
     print("applied potentials")
-    mgr.plotPotential(grid)
+    #mgr.plotPotential(grid)
     grid = mgr.matrix2grid(grid)
     scaling = mgr.resolution
     tgt = [(target.target.position.x + 12.8)/scaling, (target.target.position.y + 12.8) / scaling]
     path = mgr.calcPath(int(round((robot_pose[0]+12.8) / scaling)),int(round((robot_pose[1] + 12.8)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
     trajectory = path2trajectory(path)
-    mgr.plotPath(path)
+    #mgr.plotPath(path)
     trajectoryPub.publish(trajectory)
     print(trajectory)
     processing = False
