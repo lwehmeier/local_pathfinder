@@ -16,7 +16,7 @@ from map_msgs.msg import OccupancyGridUpdate
 import matplotlib.pyplot as plt
 from local_pathfinder.msg import Target
 plt.style.use('classic')
-BASE_POTENTIAL = 2.0
+BASE_POTENTIAL = 10.0
 ALLOW_UNKNOWN = True
 
 class MapMgr:
@@ -71,7 +71,7 @@ class MapMgr:
         return potential
     def potentialPropagator(self, x0,y0, x1, y1):
         d = np.linalg.norm(np.array([x0-x1,y0-y1]))
-        return np.exp(1/(d*d*sqrt(d)))-1
+        return np.exp(1/(d*d*d*d))-1
     def propagatePotential(self, matrix, x, y):
         width = len(matrix)
         height = len(matrix[0])
@@ -261,7 +261,7 @@ def path2trajectory(path):
     start = Pose()
     start.orientation = Quaternion(0,0,0,1.0)
     start.position = Vector3(path[0][0]*scaling, path[0][1]*scaling, 0)
-    poses.append(start)
+    #poses.append(start)
     lastTile = path[0]
     direction = [path[1][0]-path[0][0], path[1][1]-path[0][1]]
     for tile in path[1:]:
