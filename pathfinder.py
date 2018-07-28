@@ -21,7 +21,8 @@ from local_pathfinder.msg import Target
 plt.style.use('classic')
 BASE_POTENTIAL = 50.0
 ALLOW_UNKNOWN = True
-
+DEBUG_PLOT = True
+POTENTIAL_DISTANCE = 0.4
 class MapMgr:
     def __init__(self):
         self.map = None
@@ -66,13 +67,17 @@ class MapMgr:
     def potentialPropagator(self, x0,y0, x1, y1):
         d = np.linalg.norm(np.array([x0-x1,y0-y1]))
         return np.exp(1/(d*d*d*sqrt(d)))-1
-    def propagatePotential(self, matrix, x, y):
+    def rPotentialPropagator(self, x0,y0, x1, y1):
+        d = np.linalg.norm(np.array([x0-x1,y0-y1]))
+        return (np.exp(1/(d*d*d))-1)
+    def propagatePotential_impl(self, matrix, x, y, propagator):
         width = len(matrix)
         height = len(matrix[0])
-        x_min = max(x-8, 0)
-        x_max = min(x+9, width)
-        y_min = max(y-8, 0)
-        y_max =  min(y+9,height)
+        d = int(round(POTENTIAL_DISTANCE / self.resolution)) # affected tile distance
+        x_min = max(x-d, 0)
+        x_max = min(x+d+1, width)
+        y_min = max(y-d, 0)
+        y_max =  min(y+d+1,height)
         potential = np.zeros((x_max-x_min, y_max-y_min))
         if False and np.product(matrix[x_min:x, y_min:y_max]) == 0.0:
             x_min_prop = x #there's another block in that direction, no need to compute potentials
@@ -85,8 +90,12 @@ class MapMgr:
         for i in range(x_min_prop, x_max):
             for j in range(y_min_prop, y_max):
                 if not (i == x and j == y):
-                    potential[i-x_min,j-y_min]=BASE_POTENTIAL*self.potentialPropagator(x,y,i,j)
+                    potential[i-x_min,j-y_min]=BASE_POTENTIAL*propagator(self, x,y,i,j)
         return potential
+    def propagatePotential(self, matrix, x, y):
+        return self.propagatePotential_impl(matrix, x, y, MapMgr.potentialPropagator)
+    def propagateRPotential(self, matrix, x, y):
+        return self.propagatePotential_impl(matrix, x, y, MapMgr.rPotentialPropagator)
     def computePotential(self, matrix):
         width = len(matrix)
         height=len(matrix[0])
@@ -94,11 +103,27 @@ class MapMgr:
         for x in range(0, width):
             for y in range(0, height):
                 if matrix[x,y]==0.0:
-                    x_min = max(x-8, 0)
-                    x_max = min(x+9, width)
-                    y_min = max(y-8, 0)
-                    y_max =  min(y+9,height)
+                    d = int(round(POTENTIAL_DISTANCE / self.resolution)) # affected tile distance
+                    x_min = max(x-d, 0)
+                    x_max = min(x+d+1, width)
+                    y_min = max(y-d, 0)
+                    y_max =  min(y+d+1,height)
                     lp = self.propagatePotential(matrix,x,y)
+                    potential[x_min:x_max, y_min:y_max] += lp
+        return potential
+    def computeRPotential(self, matrix):
+        width = len(matrix)
+        height=len(matrix[0])
+        potential = np.zeros((width, height))
+        for x in range(0, width):
+            for y in range(0, height):
+                if matrix[x,y]==0.0:
+                    d = int(round(POTENTIAL_DISTANCE / self.resolution)) # affected tile distance
+                    x_min = max(x-d, 0)
+                    x_max = min(x+d+1, width)
+                    y_min = max(y-d, 0)
+                    y_max =  min(y+d+1,height)
+                    lp = self.propagateRPotential(matrix,x,y)
                     potential[x_min:x_max, y_min:y_max] += lp
         return potential
     def applyPotential(self, matrix, potential):
@@ -121,16 +146,6 @@ class MapMgr:
         plt.matshow(matrix, cmap='RdYlGn_r');
         plt.colorbar()
         #plt.show()
-
-#grid = Grid(matrix=matrix)
-#start = grid.node(0, 0)
-#end = grid.node(2, 2)
-
-#finder = AStarFinder(diagonal_movement=DiagonalMovement.only_when_no_obstacle)
-#path, runs = finder.find_path(start, end, grid)
-
-#print('operations:', runs, 'path length:', len(path))
-#print(grid.grid_str(path=path, start=start, end=end))
 
     def genDummy(self):
         g = OccupancyGrid()
@@ -191,9 +206,12 @@ class MapMgr:
                 scaled[x*sf:x*sf+sf, y*sf:y*sf+sf] = matrix[x,y]
         return scaled
     def applyOverlay(self, matrix, overlay):
-        f = np.vectorize(overlayScaler, otypes=[np.float])
+        z = np.zeros((len(matrix), len(matrix[0])))
         ret = np.array(matrix+overlay)
-        ret = f(ret)
+        for x in range(len(matrix)):
+            for y in range(len(matrix[0])):
+                if matrix[x, y] * overlay[x,y] == 0:
+                    ret[x,y] = 0.0
         return ret
     def downscale(self, sf, matrix):
         if int(sf) != sf:
@@ -219,10 +237,6 @@ class MapMgr:
         return m
 def overlayScaler(tile):
     return 0.0 if tile <= 1.0 else tile
-
-
-
-
 
 def callbackCostmap(og):
     print("received new costmap")
@@ -286,24 +300,24 @@ def callbackTarget(target):
     matrix = mgr.downscale(4, matrix)
     mgr.matrix = matrix
     overlay = mgr.scaleOverlayMap(target.allowedEnv)
-    #plt.matshow(overlay)
-    #plt.show()
     print("computed restriction overlay")
     rpot = mgr.computeRPotential(overlay)
-    rpot = mgr.applyPotential(rpot)
+    overlay = mgr.applyPotential(overlay, rpot)
     #grid=matrix
     potentials = mgr.computePotential(matrix)
     print("computed map potentials")
     grid = mgr.applyPotential(matrix, potentials)
-    grid = mgr.applyOverlay(grid, rpot)
+    grid = mgr.applyOverlay(grid, overlay)
     print("applied potentials")
-    #mgr.plotPotential(grid)
+    if DEBUG_PLOT:
+        mgr.plotPotential(grid)
     grid = mgr.matrix2grid(grid)
     scaling = mgr.resolution
-    tgt = [(target.target.position.x + 12.8)/scaling, (target.target.position.y + 12.8) / scaling]
-    path = mgr.calcPath(int(round((robot_pose[0]+12.8) / scaling)),int(round((robot_pose[1] + 12.8)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
+    tgt = [(target.target.position.x + target.allowedEnv.info.origin.position.x)/scaling, (target.target.position.y + target.allowedEnv.info.origin.position.y) / scaling]
+    path = mgr.calcPath(int(round((robot_pose[0] - target.allowedEnv.info.origin.position.x) / scaling)),int(round((robot_pose[1] - target.allowedEnv.info.origin.position.y)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
     trajectory = path2trajectory(path)
-    #mgr.plotPath(path)
+    if DEBUG_PLOT:
+        mgr.plotPath(path)
     trajectoryPub.publish(trajectory)
     print(trajectory)
     processing = False
