@@ -218,8 +218,8 @@ class MapMgr:
             print("ERROR: invalid downscaling factor. Only integers are supported")
             return
         sf = int(sf)
-        height = self.height/sf
-        width = self.width/sf
+        height = self.map.info.height/sf
+        width = self.map.info.width/sf
         m = np.zeros((width, height))
         for x in range(0, width):
             for y in range(0, height):
@@ -233,7 +233,7 @@ class MapMgr:
         self.width = width
         self.height = height
         self.matrix = m
-        self.resolution = self.resolution * sf
+        self.resolution = self.map.info.resolution * sf
         return m
 def overlayScaler(tile):
     return 0.0 if tile <= 1.0 else tile
@@ -267,7 +267,7 @@ def path2trajectory(path):
     scaling = mgr.resolution
     path = path[0:] #mk deep copy
     for i in range(0, len(path)):
-        path[i] = [path[i][0]-12.8/scaling, path[i][1]-12.8/scaling]
+        path[i] = [path[i][0]+mgr.map.info.origin.position.x/scaling, path[i][1]+mgr.map.info.origin.position.y/scaling]
     start = Pose()
     start.orientation = Quaternion(0,0,0,1.0)
     start.position = Vector3(path[0][0]*scaling, path[0][1]*scaling, 0)
@@ -291,7 +291,66 @@ def path2trajectory(path):
     print("computed new path:")
     print(trajectory.poses)
     return trajectory
-
+def callbackRestriction_napi(grid):
+    global restricted
+    restricted = grid
+    print("received new area restriction information")
+    matrix = mgr.grid2matrix(mgr.map)
+    matrix = mgr.downscale(4, matrix)
+    restricted = mgr.scaleOverlayMap(restricted)
+    print("computing overlay potentials")
+    rpot = mgr.computeRPotential(restricted)
+    restricted = mgr.applyPotential(restricted, rpot)
+    print("computed overlay potentials")
+def prepareMap():
+    matrix = mgr.grid2matrix(mgr.map)
+    matrix = mgr.downscale(4, matrix)
+    potentials = mgr.computePotential(matrix)
+    print("computed map potentials")
+    grid = mgr.applyPotential(matrix, potentials)
+    grid = mgr.applyOverlay(grid, restricted)
+    print("applied potentials")
+    mgr.matrix = grid
+    if DEBUG_PLOT:
+        mgr.plotPotential(grid)
+    grid = mgr.matrix2grid(grid)
+    return grid
+def callbackTarget_napi(target):
+    print("received new target via napi")
+    global processing
+    processing = True
+    grid = prepareMap()
+    scaling = mgr.resolution
+    tgt = [(target.pose.position.x - mgr.map.info.origin.position.x)/scaling, (target.pose.position.y - mgr.map.info.origin.position.y) / scaling]
+    path = mgr.calcPath(int(round((robot_pose[0] - mgr.map.info.origin.position.x) / scaling)),int(round((robot_pose[1] - mgr.map.info.origin.position.y)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
+    trajectory = path2trajectory(path)
+    if DEBUG_PLOT:
+        mgr.plotPath(path)
+    processing = False
+    trajectoryPub.publish(trajectory)
+    print(trajectory)
+def callbackTrajectory_napi(posearray):
+    print("received new trajectory via napi")
+    global processing
+    processing = True
+    grid = prepareMap()
+    scaling = mgr.resolution
+    trajectory = PoseArray()
+    trajectory.header.frame_id="map"
+    last = (int(round((robot_pose[0] - mgr.map.info.origin.position.x) / scaling)),int(round((robot_pose[1] - mgr.map.info.origin.position.y)/scaling)))
+    for target in posearray.poses:
+        tgt = [(target.position.x - mgr.map.info.origin.position.x)/scaling, (target.position.y - mgr.map.info.origin.position.y) / scaling]
+        print(last)
+        print(tgt)
+        path = mgr.calcPath(int(round(last[0])),int(round(last[1])), int(round(tgt[0])), int(round(tgt[1])), grid)
+        trajectory.poses += path2trajectory(path).poses
+        last = tgt
+        grid = mgr.matrix2grid(mgr.matrix) #in-place pathfindig...... ****
+    if DEBUG_PLOT:
+        mgr.plotPath(path)
+    processing = False
+    trajectoryPub.publish(trajectory)
+    print(trajectory)
 def callbackTarget(target):
     print("received new target")
     global processing
@@ -313,8 +372,8 @@ def callbackTarget(target):
         mgr.plotPotential(grid)
     grid = mgr.matrix2grid(grid)
     scaling = mgr.resolution
-    tgt = [(target.target.position.x + target.allowedEnv.info.origin.position.x)/scaling, (target.target.position.y + target.allowedEnv.info.origin.position.y) / scaling]
-    path = mgr.calcPath(int(round((robot_pose[0] - target.allowedEnv.info.origin.position.x) / scaling)),int(round((robot_pose[1] - target.allowedEnv.info.origin.position.y)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
+    tgt = [(target.target.position.x - mgr.map.info.origin.position.x)/scaling, (target.target.position.y - mgr.map.info.origin.position.y) / scaling]
+    path = mgr.calcPath(int(round((robot_pose[0] - mgr.map.info.origin.position.x) / scaling)),int(round((robot_pose[1] - mgr.map.info.origin.position.y)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
     trajectory = path2trajectory(path)
     if DEBUG_PLOT:
         mgr.plotPath(path)
@@ -334,6 +393,9 @@ mgr = MapMgr()
 rospy.init_node('local_pathfinder')
 rospy.Subscriber("/slam_out_pose", PoseStamped, callbackPosition)
 rospy.Subscriber("/direct_move/target", Target, callbackTarget, tcp_nodelay=True, queue_size=5)
+rospy.Subscriber("/restricted", OccupancyGrid, callbackRestriction_napi)
+rospy.Subscriber("/local_planner/target", PoseStamped, callbackTarget_napi)
+rospy.Subscriber("/local_planner/trajectory", PoseArray, callbackTrajectory_napi)
 trajectoryPub = rospy.Publisher("/direct_move/trajectory", PoseArray, queue_size=1)
 rospy.Subscriber("/move_base/global_costmap/costmap", OccupancyGrid, callbackCostmap)
 rospy.Subscriber("/move_base/global_costmap/costmap_updates", OccupancyGridUpdate, callbackUpdate, queue_size=1)
