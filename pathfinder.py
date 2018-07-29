@@ -288,7 +288,10 @@ def path2trajectory(path, targetOrientation=None):
         lastTile=tile
         direction=ndir
     tgt = Pose()
-    tgt.orientation = Quaternion(0,0,0,1)
+    if targetOrientation is None:
+        tgt.orientation = Quaternion(0,0,0,1)
+    else:
+        tgt.orientation = targetOrientation
     tgt.position = Vector3(lastTile[0]*scaling, lastTile[1]*scaling, 0)
     poses.append(tgt)
     trajectory.poses = poses
