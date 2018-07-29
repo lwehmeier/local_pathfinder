@@ -260,7 +260,7 @@ def callbackUpdate(costmap_u):
     cmap.data = costmap_u.data
     callbackCostmap(cmap)
 
-def path2trajectory(path):
+def path2trajectory(path, targetOrientation=None):
     trajectory = PoseArray()
     trajectory.header.frame_id = "map"
     poses = []
@@ -268,6 +268,7 @@ def path2trajectory(path):
     path = path[0:] #mk deep copy
     for i in range(0, len(path)):
         path[i] = [path[i][0]+mgr.map.info.origin.position.x/scaling, path[i][1]+mgr.map.info.origin.position.y/scaling]
+        path[i] = [path[i][0]-mgr.map.info.resolution/2 + mgr.resolution/2, path[i][1]-mgr.map.info.resolution/2 + mgr.resolution/2] #use tile centre
     start = Pose()
     start.orientation = Quaternion(0,0,0,1.0)
     start.position = Vector3(path[0][0]*scaling, path[0][1]*scaling, 0)
@@ -278,7 +279,10 @@ def path2trajectory(path):
         ndir = [tile[0]-lastTile[0], tile[1]-lastTile[1]]
         if ndir != direction:
             pose = Pose()
-            pose.orientation = Quaternion(0,0,0,1)
+            if targetOrientation is None:
+                pose.orientation = Quaternion(0,0,0,1)
+            else:
+                pose.orientation = targetOrientation
             pose.position = Vector3(lastTile[0]*scaling, lastTile[1]*scaling, 0)
             poses.append(pose)
         lastTile=tile
@@ -343,7 +347,7 @@ def callbackTrajectory_napi(posearray):
         print(last)
         print(tgt)
         path = mgr.calcPath(int(round(last[0])),int(round(last[1])), int(round(tgt[0])), int(round(tgt[1])), grid)
-        trajectory.poses += path2trajectory(path).poses
+        trajectory.poses += path2trajectory(path, target.orientation).poses
         last = tgt
         grid = mgr.matrix2grid(mgr.matrix) #in-place pathfindig...... ****
     if DEBUG_PLOT:
