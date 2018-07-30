@@ -3,7 +3,7 @@ import math
 from math import sin, cos, pi, radians, sqrt
 import rospy
 import tf
-from std_msgs.msg import Float32, Int32, Int16, Int8
+from std_msgs.msg import Float32, Int32, Int16, Int8, Int8MultiArray
 from geometry_msgs.msg import Vector3, Quaternion, Pose, PoseStamped, PoseArray
 import struct
 from pathfinding.core.diagonal_movement import DiagonalMovement
@@ -243,9 +243,18 @@ def callbackCostmap(og):
     global cmap
     cmap = og
     mgr.setMap(og)
-    #matrix = mgr.grid2matrix(og)
-    #matrix = mgr.downscale(4, matrix)
+    matrix = mgr.grid2matrix(og)
+    matrix = mgr.downscale(4, matrix)
     #mgr.matrix = matrix
+    msg = Int8MultiArray()
+    dim1 = MultiArrayDimension()
+    dim2 = MultiArrayDimension()
+    dim1.size = mgr.height
+    dim2.size = mgr.width
+    msg.layout.dim = [dim1, dim2]
+    msg.data = np.reshape(matrix, mgr.height*mgr.width)
+    mapPub.publish(msg)
+
 def callbackUpdate(costmap_u):
     if processing:
         print("not updating map, it is currently in use by the planner")
@@ -404,6 +413,7 @@ rospy.Subscriber("/restricted", OccupancyGrid, callbackRestriction_napi)
 rospy.Subscriber("/local_planner/target", PoseStamped, callbackTarget_napi)
 rospy.Subscriber("/local_planner/trajectory", PoseArray, callbackTrajectory_napi)
 trajectoryPub = rospy.Publisher("/direct_move/trajectory", PoseArray, queue_size=1)
+mapPub= rospy.Publisher("/local_planner/map", Int8MultiArray, queue_size=2)
 rospy.Subscriber("/move_base/global_costmap/costmap", OccupancyGrid, callbackCostmap)
 rospy.Subscriber("/move_base/global_costmap/costmap_updates", OccupancyGridUpdate, callbackUpdate, queue_size=1)
 rospy.spin()
