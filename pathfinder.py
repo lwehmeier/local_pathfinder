@@ -21,7 +21,7 @@ from local_pathfinder.msg import Target
 plt.style.use('classic')
 BASE_POTENTIAL = 50.0
 ALLOW_UNKNOWN = True
-DEBUG_PLOT = True
+DEBUG_PLOT = False
 POTENTIAL_DISTANCE = 0.4
 class MapMgr:
     def __init__(self):
