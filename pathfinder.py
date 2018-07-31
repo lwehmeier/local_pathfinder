@@ -339,12 +339,23 @@ def callbackTarget_napi(target):
     scaling = mgr.resolution
     tgt = [(target.pose.position.x - mgr.map.info.origin.position.x)/scaling, (target.pose.position.y - mgr.map.info.origin.position.y) / scaling]
     path = mgr.calcPath(int(round((robot_pose[0] - mgr.map.info.origin.position.x) / scaling)),int(round((robot_pose[1] - mgr.map.info.origin.position.y)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
-    trajectory = path2trajectory(path)
+    complete_path = path
+    trajectory = path2trajectory(path, target.pose.orientation)
     if DEBUG_PLOT:
         mgr.plotPath(path)
     processing = False
     trajectoryPub.publish(trajectory)
     print(trajectory)
+    path = np.array(complete_path)
+    path = np.reshape(path, 2*len(path))
+    msg = Int8MultiArray()
+    dim1 = MultiArrayDimension()
+    dim1.size = len(path)/2
+    dim2 = MultiArrayDimension()
+    dim2.size =2
+    msg.layout.dim = [dim1, dim2]
+    msg.data = path
+    pathPub.publish(msg)
 def callbackTrajectory_napi(posearray):
     print("received new trajectory via napi")
     global processing
@@ -425,7 +436,7 @@ rospy.Subscriber("/restricted", OccupancyGrid, callbackRestriction_napi)
 rospy.Subscriber("/local_planner/target", PoseStamped, callbackTarget_napi)
 rospy.Subscriber("/local_planner/trajectory", PoseArray, callbackTrajectory_napi)
 trajectoryPub = rospy.Publisher("/direct_move/trajectory", PoseArray, queue_size=1)
-mapPub= rospy.Publisher("/local_planner/map", Int8MultiArray, queue_size=2)
+mapPub= rospy.Publisher("/local_planner/map", Int8MultiArray, queue_size=0, tcp_nodelay=True)
 pathPub = rospy.Publisher("/local_planner/path", Int8MultiArray, queue_size=2)
 rospy.Subscriber("/move_base/global_costmap/costmap", OccupancyGrid, callbackCostmap)
 rospy.Subscriber("/move_base/global_costmap/costmap_updates", OccupancyGridUpdate, callbackUpdate, queue_size=1)
