@@ -3,7 +3,7 @@ import rospy
 from std_msgs.msg import Int8MultiArray, Int16, Bool
 from geometry_msgs.msg import PoseStamped, PoseArray
 import numpy as np
-
+import matplotlib.pyplot as plt
 
 def targetReached(val):
     global planner_target
@@ -21,20 +21,25 @@ def mapUpdate(int8array):
     env_map = np.reshape(data, (int8array.layout.dim[0].size, int8array.layout.dim[1].size))
 
 def checkPath(event):
-    if planner_target is None:
+    if planner_target is None or path is None:
         return
     for x,y in path:
-        if env_map[int(x), int(y)] == 0:
+        if env_map[y, x] == 0:
+            print(y, x)
+            plt.matshow(env_map)
+            plt.show()
             print("path became blocked. Recalculating...")
             abortPub.publish(Bool(True))
-            if planner_target is PoseStamped:
+            if isinstance(planner_target, PoseStamped):
                 replanPub_target.publish(planner_target)
-            elif planer_target is PoseArray:
+            elif isinstance(planner_target,PoseArray):
                 replanPub_trajectory.publish(planner_target)
             else:
                 print("cannot replan, unknown target type")
+            return
 
 planner_target = None
+path = None
 rospy.init_node("path_monitor")
 abortPub = rospy.Publisher("/direct_move/abort", Bool, queue_size=2)
 replanPub_target = rospy.Publisher("/local_planner/target", PoseStamped, queue_size=1)

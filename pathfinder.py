@@ -3,7 +3,7 @@ import math
 from math import sin, cos, pi, radians, sqrt
 import rospy
 import tf
-from std_msgs.msg import Float32, Int32, Int16, Int8, Int8MultiArray
+from std_msgs.msg import Float32, Int32, Int16, Int8, Int8MultiArray, MultiArrayDimension
 from geometry_msgs.msg import Vector3, Quaternion, Pose, PoseStamped, PoseArray
 import struct
 from pathfinding.core.diagonal_movement import DiagonalMovement
@@ -350,6 +350,7 @@ def callbackTrajectory_napi(posearray):
     global processing
     processing = True
     grid = prepareMap()
+    complete_path = []
     scaling = mgr.resolution
     trajectory = PoseArray()
     trajectory.header.frame_id="map"
@@ -359,6 +360,7 @@ def callbackTrajectory_napi(posearray):
         print(last)
         print(tgt)
         path = mgr.calcPath(int(round(last[0])),int(round(last[1])), int(round(tgt[0])), int(round(tgt[1])), grid)
+        complete_path += path
         trajectory.poses += path2trajectory(path, target.orientation).poses
         last = tgt
         grid = mgr.matrix2grid(mgr.matrix) #in-place pathfindig...... ****
@@ -367,6 +369,16 @@ def callbackTrajectory_napi(posearray):
     processing = False
     trajectoryPub.publish(trajectory)
     print(trajectory)
+    path = np.array(complete_path)
+    path = np.reshape(path, 2*len(path))
+    msg = Int8MultiArray()
+    dim1 = MultiArrayDimension()
+    dim1.size = len(path)/2
+    dim2 = MultiArrayDimension()
+    dim2.size =2
+    msg.layout.dim = [dim1, dim2]
+    msg.data = path
+    pathPub.publish(msg)
 def callbackTarget(target):
     print("received new target")
     global processing
@@ -414,6 +426,7 @@ rospy.Subscriber("/local_planner/target", PoseStamped, callbackTarget_napi)
 rospy.Subscriber("/local_planner/trajectory", PoseArray, callbackTrajectory_napi)
 trajectoryPub = rospy.Publisher("/direct_move/trajectory", PoseArray, queue_size=1)
 mapPub= rospy.Publisher("/local_planner/map", Int8MultiArray, queue_size=2)
+pathPub = rospy.Publisher("/local_planner/path", Int8MultiArray, queue_size=2)
 rospy.Subscriber("/move_base/global_costmap/costmap", OccupancyGrid, callbackCostmap)
 rospy.Subscriber("/move_base/global_costmap/costmap_updates", OccupancyGridUpdate, callbackUpdate, queue_size=1)
 rospy.spin()
