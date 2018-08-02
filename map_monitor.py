@@ -45,16 +45,17 @@ def checkPath(event):
             path = None
             return
 
-planner_target = None
-path = None
-rospy.init_node("path_monitor")
-abortPub = rospy.Publisher("/direct_move/abort", Bool, queue_size=2)
-replanPub_target = rospy.Publisher("/local_planner/target", PoseStamped, queue_size=1)
-replanPub_trajectory = rospy.Publisher("/local_planner/trajectory", PoseArray, queue_size=1)
-rospy.Timer(rospy.Duration(1), checkPath)
-rospy.Subscriber("/local_planner/target", PoseStamped, plannerUpdate)
-rospy.Subscriber("/local_planner/trajectory", PoseArray, plannerUpdate)
-rospy.Subscriber("/direct_move/reached_target", Bool, targetReached)
-rospy.Subscriber("/local_planner/path", Int8MultiArray, pathUpdate)
-rospy.Subscriber("/local_planner/map", Int8MultiArray, mapUpdate, queue_size=1, tcp_nodelay=True)
-rospy.spin()
+if __name__ == "__main__":
+    planner_target = None
+    path = None
+    rospy.init_node("path_monitor")
+    abortPub = rospy.Publisher("/direct_move/abort", Bool, queue_size=2)
+    replanPub_target = rospy.Publisher("/local_planner/target", PoseStamped, queue_size=1)
+    replanPub_trajectory = rospy.Publisher("/local_planner/trajectory", PoseArray, queue_size=1)
+    rospy.Timer(rospy.Duration(1), checkPath)
+    rospy.Subscriber("/local_planner/target", PoseStamped, plannerUpdate)
+    rospy.Subscriber("/local_planner/trajectory", PoseArray, plannerUpdate)
+    rospy.Subscriber("/direct_move/reached_target", Bool, targetReached)
+    rospy.Subscriber("/local_planner/path", Int8MultiArray, pathUpdate)
+    rospy.Subscriber("/local_planner/map", Int8MultiArray, mapUpdate, queue_size=1, tcp_nodelay=True)
+    rospy.spin()

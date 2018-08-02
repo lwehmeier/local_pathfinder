@@ -3,7 +3,7 @@ import math
 from math import sin, cos, pi, radians, sqrt
 import rospy
 import tf
-from std_msgs.msg import Float32, Int32, Int16, Int8, Int8MultiArray, MultiArrayDimension
+from std_msgs.msg import Bool, Float32, Int32, Int16, Int8, Int8MultiArray, MultiArrayDimension
 from geometry_msgs.msg import Vector3, Quaternion, Pose, PoseStamped, PoseArray
 import struct
 from pathfinding.core.diagonal_movement import DiagonalMovement
@@ -23,6 +23,7 @@ BASE_POTENTIAL = 50.0
 ALLOW_UNKNOWN = True
 DEBUG_PLOT = False
 POTENTIAL_DISTANCE = 0.4
+import map_monitor
 class MapMgr:
     def __init__(self):
         self.map = None
@@ -259,15 +260,17 @@ def callbackCostmap(og):
     mgr.setMap(og)
     matrix = mgr.grid2matrix(og)
     matrix = mgr.downscale(4, matrix)
-    #mgr.matrix = matrix
-    msg = Int8MultiArray()
-    dim1 = MultiArrayDimension()
-    dim2 = MultiArrayDimension()
-    dim1.size = mgr.height
-    dim2.size = mgr.width
-    msg.layout.dim = [dim1, dim2]
-    msg.data = np.reshape(matrix, mgr.height*mgr.width)
-    mapPub.publish(msg)
+    mgr.matrix = matrix
+    #msg = Int8MultiArray()
+    #dim1 = MultiArrayDimension()
+    #dim2 = MultiArrayDimension()
+    #dim1.size = mgr.height
+    #dim2.size = mgr.width
+    #msg.layout.dim = [dim1, dim2]
+    #msg.data = np.reshape(matrix, mgr.height*mgr.width)
+    #mapPub.publish(msg)
+    global env_map
+    env_map = matrix
 
 cntr = 0
 def callbackUpdate(costmap_u):
@@ -358,24 +361,26 @@ def callbackTarget_napi(target):
     grid = prepareMap()
     scaling = mgr.resolution
     tgt = [(target.pose.position.x - mgr.map.info.origin.position.x)/scaling, (target.pose.position.y - mgr.map.info.origin.position.y) / scaling]
-    path = mgr.calcPath(int(round((robot_pose[0] - mgr.map.info.origin.position.x) / scaling)),int(round((robot_pose[1] - mgr.map.info.origin.position.y)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
-    complete_path = path
-    trajectory = path2trajectory(path, target.pose.orientation)
+    m_path = mgr.calcPath(int(round((robot_pose[0] - mgr.map.info.origin.position.x) / scaling)),int(round((robot_pose[1] - mgr.map.info.origin.position.y)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
+    complete_path = m_path
+    trajectory = path2trajectory(m_path, target.pose.orientation)
     if DEBUG_PLOT:
-        mgr.plotPath(path)
+        mgr.plotPath(m_path)
     processing = False
     trajectoryPub.publish(trajectory)
     print(trajectory)
-    path = np.array(complete_path)
-    path = np.reshape(path, 2*len(path))
-    msg = Int8MultiArray()
-    dim1 = MultiArrayDimension()
-    dim1.size = len(path)/2
-    dim2 = MultiArrayDimension()
-    dim2.size =2
-    msg.layout.dim = [dim1, dim2]
-    msg.data = path
-    pathPub.publish(msg)
+    global path
+    path = m_path
+    #path = np.array(complete_path)
+    #path = np.reshape(m_path, 2*len(m_path))
+    #msg = Int8MultiArray()
+    #dim1 = MultiArrayDimension()
+    #dim1.size = len(path)/2
+    #dim2 = MultiArrayDimension()
+    #dim2.size =2
+    #msg.layout.dim = [dim1, dim2]
+    #msg.data = path
+    #pathPub.publish(msg)
 def callbackTrajectory_napi(posearray):
     print("received new trajectory via napi")
     global processing
@@ -390,9 +395,9 @@ def callbackTrajectory_napi(posearray):
         tgt = [(target.position.x - mgr.map.info.origin.position.x)/scaling, (target.position.y - mgr.map.info.origin.position.y) / scaling]
         print(last)
         print(tgt)
-        path = mgr.calcPath(int(round(last[0])),int(round(last[1])), int(round(tgt[0])), int(round(tgt[1])), grid)
-        complete_path += path
-        trajectory.poses += path2trajectory(path, target.orientation).poses
+        m_path = mgr.calcPath(int(round(last[0])),int(round(last[1])), int(round(tgt[0])), int(round(tgt[1])), grid)
+        complete_path += m_path
+        trajectory.poses += path2trajectory(m_path, target.orientation).poses
         last = tgt
         grid = mgr.matrix2grid(mgr.matrix) #in-place pathfindig...... ****
     if DEBUG_PLOT:
@@ -400,16 +405,18 @@ def callbackTrajectory_napi(posearray):
     processing = False
     trajectoryPub.publish(trajectory)
     print(trajectory)
-    path = np.array(complete_path)
-    path = np.reshape(path, 2*len(path))
-    msg = Int8MultiArray()
-    dim1 = MultiArrayDimension()
-    dim1.size = len(path)/2
-    dim2 = MultiArrayDimension()
-    dim2.size =2
-    msg.layout.dim = [dim1, dim2]
-    msg.data = path
-    pathPub.publish(msg)
+    #path = np.array(complete_path)
+    #path = np.reshape(path, 2*len(path))
+    #msg = Int8MultiArray()
+    #dim1 = MultiArrayDimension()
+    #dim1.size = len(path)/2
+    #dim2 = MultiArrayDimension()
+    #dim2.size =2
+    #msg.layout.dim = [dim1, dim2]
+    #msg.data = path
+    #pathPub.publish(msg)
+    global path
+    path = complete_path
 def callbackTarget(target):
     print("received new target")
     global processing
@@ -443,6 +450,9 @@ def callbackPosition(pose):
     global robot_pose
     robot_pose = [pose.pose.position.x, pose.pose.position.y, 0]
 
+planner_target = None
+path = None
+nev_map = None
 global cmap
 cmap = None
 global processing
@@ -460,4 +470,8 @@ mapPub= rospy.Publisher("/local_planner/map", Int8MultiArray, queue_size=0, tcp_
 pathPub = rospy.Publisher("/local_planner/path", Int8MultiArray, queue_size=2)
 rospy.Subscriber("/move_base/global_costmap/costmap", OccupancyGrid, callbackCostmap)
 rospy.Subscriber("/move_base/global_costmap/costmap_updates", OccupancyGridUpdate, callbackUpdate, queue_size=1)
+abortPub = rospy.Publisher("/direct_move/abort", Bool, queue_size=2)
+replanPub_target = rospy.Publisher("/local_planner/target", PoseStamped, queue_size=1)
+replanPub_trajectory = rospy.Publisher("/local_planner/trajectory", PoseArray, queue_size=1)
+rospy.Timer(rospy.Duration(1), map_monitor.checkPath)
 rospy.spin()
