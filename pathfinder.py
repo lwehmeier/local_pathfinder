@@ -23,6 +23,7 @@ BASE_POTENTIAL = 50.0
 ALLOW_UNKNOWN = True
 DEBUG_PLOT = False
 POTENTIAL_DISTANCE = 0.4
+import globfile
 import map_monitor
 class MapMgr:
     def __init__(self):
@@ -269,8 +270,7 @@ def callbackCostmap(og):
     #msg.layout.dim = [dim1, dim2]
     #msg.data = np.reshape(matrix, mgr.height*mgr.width)
     #mapPub.publish(msg)
-    global env_map
-    env_map = matrix
+    globfile.env_map = matrix
 
 cntr = 0
 def callbackUpdate(costmap_u):
@@ -369,8 +369,7 @@ def callbackTarget_napi(target):
     processing = False
     trajectoryPub.publish(trajectory)
     print(trajectory)
-    global path
-    path = m_path
+    globfile.path = m_path
     #path = np.array(complete_path)
     #path = np.reshape(m_path, 2*len(m_path))
     #msg = Int8MultiArray()
@@ -415,8 +414,7 @@ def callbackTrajectory_napi(posearray):
     #msg.layout.dim = [dim1, dim2]
     #msg.data = path
     #pathPub.publish(msg)
-    global path
-    path = complete_path
+    globfile.path = complete_path
 def callbackTarget(target):
     print("received new target")
     global processing
@@ -450,9 +448,6 @@ def callbackPosition(pose):
     global robot_pose
     robot_pose = [pose.pose.position.x, pose.pose.position.y, 0]
 
-planner_target = None
-path = None
-nev_map = None
 global cmap
 cmap = None
 global processing
@@ -470,8 +465,9 @@ mapPub= rospy.Publisher("/local_planner/map", Int8MultiArray, queue_size=0, tcp_
 pathPub = rospy.Publisher("/local_planner/path", Int8MultiArray, queue_size=2)
 rospy.Subscriber("/move_base/global_costmap/costmap", OccupancyGrid, callbackCostmap)
 rospy.Subscriber("/move_base/global_costmap/costmap_updates", OccupancyGridUpdate, callbackUpdate, queue_size=1)
-abortPub = rospy.Publisher("/direct_move/abort", Bool, queue_size=2)
-replanPub_target = rospy.Publisher("/local_planner/target", PoseStamped, queue_size=1)
-replanPub_trajectory = rospy.Publisher("/local_planner/trajectory", PoseArray, queue_size=1)
+#abortPub = rospy.Publisher("/direct_move/abort", Bool, queue_size=2)
+#replanPub_target = rospy.Publisher("/local_planner/target", PoseStamped, queue_size=1)
+#replanPub_trajectory = rospy.Publisher("/local_planner/trajectory", PoseArray, queue_size=1)
+map_monitor.setup()
 rospy.Timer(rospy.Duration(1), map_monitor.checkPath)
 rospy.spin()
