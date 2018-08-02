@@ -49,20 +49,34 @@ class MapMgr:
         if value == -1:
             return 1.0 if ALLOW_UNKNOWN else 0.0#unknown 
         print(value)
-
+    @staticmethod
+    def gridVal2Matrix_v(value):
+        if value == 0:
+            return 1.0
+        if value <= 50:
+            return 0.3
+        if value > 50:
+            return 0.0
+        if value == -1:
+            return 1.0 if ALLOW_UNKNOWN else 0.0
+        print(value)
 
     def grid2matrix(self, occupancy_grid):
         res = occupancy_grid.info.resolution
         width = occupancy_grid.info.width
         height = occupancy_grid.info.height
         data = occupancy_grid.data
-        matrix = []
-        for x in range(0,width):
-            matrix.append([])
-            for y in range(0,height):
-                mval = self.gridVal2Matrix(data[height*x+y])
-                matrix[x].append(mval)
-        return np.array(matrix)
+        #matrix = []
+        #for x in range(0,width):
+        #    matrix.append([])
+        #    for y in range(0,height):
+        #        mval = self.gridVal2Matrix(data[height*x+y])
+        #        matrix[x].append(mval)
+        #return np.array(matrix)
+        matrix = np.array(data).reshape((width, height))
+        f = np.vectorize(MapMgr.gridVal2Matrix_v, otypes=[np.float])
+        return f(matrix)
+
 
     def potentialPropagator(self, x0,y0, x1, y1):
         d = np.linalg.norm(np.array([x0-x1,y0-y1]))
@@ -255,6 +269,7 @@ def callbackCostmap(og):
     msg.data = np.reshape(matrix, mgr.height*mgr.width)
     mapPub.publish(msg)
 
+cntr = 0
 def callbackUpdate(costmap_u):
     if processing:
         print("not updating map, it is currently in use by the planner")
@@ -265,6 +280,11 @@ def callbackUpdate(costmap_u):
     if costmap_u.x != 0 or costmap_u.y != 0:
         print("cannot handle costmap update")
         return
+    global cntr
+    if cntr == 3:
+        cntr = 0
+        return 
+    cntr += 1
     global cmap
     cmap.data = costmap_u.data
     callbackCostmap(cmap)

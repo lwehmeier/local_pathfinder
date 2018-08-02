@@ -3,7 +3,6 @@ import rospy
 from std_msgs.msg import Int8MultiArray, Int16, Bool
 from geometry_msgs.msg import PoseStamped, PoseArray
 import numpy as np
-import matplotlib.pyplot as plt
 
 def targetReached(val):
     global planner_target
@@ -24,7 +23,7 @@ def mapUpdate(int8array):
     env_map = np.reshape(data, (int8array.layout.dim[0].size, int8array.layout.dim[1].size))
 
 def checkPath(event):
-    if planner_target is None or path is None:
+    if planner_target is None or path is None or env_map is None:
         return
     for x,y in path:
         if env_map[y, x] == 0:
@@ -34,10 +33,13 @@ def checkPath(event):
             #plt.show()
             print("path became blocked. Recalculating...")
             abortPub.publish(Bool(True))
+            global env_map
             if isinstance(planner_target, PoseStamped):
                 replanPub_target.publish(planner_target)
+                env_map = None #wait for new map, avoids getting stuck in a loop where the monitor rejects a trajectory based on a new map
             elif isinstance(planner_target,PoseArray):
                 replanPub_trajectory.publish(planner_target)
+                env_map = None
             else:
                 print("cannot replan, unknown target type")
             path = None
@@ -54,5 +56,5 @@ rospy.Subscriber("/local_planner/target", PoseStamped, plannerUpdate)
 rospy.Subscriber("/local_planner/trajectory", PoseArray, plannerUpdate)
 rospy.Subscriber("/direct_move/reached_target", Bool, targetReached)
 rospy.Subscriber("/local_planner/path", Int8MultiArray, pathUpdate)
-rospy.Subscriber("/local_planner/map", Int8MultiArray, mapUpdate, queue_size=1)
+rospy.Subscriber("/local_planner/map", Int8MultiArray, mapUpdate, queue_size=1, tcp_nodelay=True)
 rospy.spin()
