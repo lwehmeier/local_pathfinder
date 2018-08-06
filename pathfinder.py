@@ -3,7 +3,7 @@ import math
 from math import sin, cos, pi, radians, sqrt
 import rospy
 import tf
-from std_msgs.msg import Bool, Float32, Int32, Int16, Int8, Int8MultiArray, MultiArrayDimension
+from std_msgs.msg import String, Bool, Float32, Int32, Int16, Int8, Int8MultiArray, MultiArrayDimension
 from geometry_msgs.msg import Vector3, Quaternion, Pose, PoseStamped, PoseArray
 import struct
 from pathfinding.core.diagonal_movement import DiagonalMovement
@@ -363,6 +363,11 @@ def callbackTarget_napi(target):
     tgt = [(target.pose.position.x - mgr.map.info.origin.position.x)/scaling, (target.pose.position.y - mgr.map.info.origin.position.y) / scaling]
     m_path = mgr.calcPath(int(round((robot_pose[0] - mgr.map.info.origin.position.x) / scaling)),int(round((robot_pose[1] - mgr.map.info.origin.position.y)/scaling)), int(round(tgt[0])), int(round(tgt[1])), grid)
     complete_path = m_path
+    if len(m_path) == 0:
+        print("could not find a valid path..")
+        errPub.publish(String("ERROR: local_planner failed"))
+        globfile.path = None
+        return
     trajectory = path2trajectory(m_path, target.pose.orientation)
     if DEBUG_PLOT:
         mgr.plotPath(m_path)
@@ -396,6 +401,11 @@ def callbackTrajectory_napi(posearray):
         print(tgt)
         m_path = mgr.calcPath(int(round(last[0])),int(round(last[1])), int(round(tgt[0])), int(round(tgt[1])), grid)
         complete_path += m_path
+        if len(m_path)==0:
+            print("Error: could not plan trajectory. Failed waypoint: "+str(target))
+            errPub.publish(String("ERROR: local_planner failed: "+str(target)))
+            globfile.path = None
+            return
         trajectory.poses += path2trajectory(m_path, target.orientation).poses
         last = tgt
         grid = mgr.matrix2grid(mgr.matrix) #in-place pathfindig...... ****
@@ -465,6 +475,7 @@ mapPub= rospy.Publisher("/local_planner/map", Int8MultiArray, queue_size=0, tcp_
 pathPub = rospy.Publisher("/local_planner/path", Int8MultiArray, queue_size=2)
 rospy.Subscriber("/move_base/global_costmap/costmap", OccupancyGrid, callbackCostmap)
 rospy.Subscriber("/move_base/global_costmap/costmap_updates", OccupancyGridUpdate, callbackUpdate, queue_size=1)
+errPub = rospy.Publisher("/error", String, queue_size=1)
 #abortPub = rospy.Publisher("/direct_move/abort", Bool, queue_size=2)
 #replanPub_target = rospy.Publisher("/local_planner/target", PoseStamped, queue_size=1)
 #replanPub_trajectory = rospy.Publisher("/local_planner/trajectory", PoseArray, queue_size=1)
